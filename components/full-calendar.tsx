@@ -16,8 +16,10 @@ import {
     eachDayOfInterval,
     format,
     isToday,
-    Locale,
+    type Locale,
 } from "date-fns"
+import { TZDate } from "@date-fns/tz"
+
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
@@ -26,38 +28,36 @@ import { Slot } from "@radix-ui/react-slot"
 
 // --- Tipos y Constantes ---
 
-type CalendarViewType = "month" | "week" | "day"
+export type CalendarViewType = "month" | "week" | "day"
 
-export type CalendarEvent = {
-    id: string
-    title: string
-    description?: string
-    start: Date
-    end: Date
-    color?: "default" | "blue" | "green" | "red" | "yellow" | "purple"
-    location?: string
-    className?: string
+export type CalendarEventColor = "default" | "blue" | "green" | "red" | "yellow" | "purple"
+
+export interface BaseCalendarEvent {
+    start: Date | string
+    end: Date | string
+    color?: CalendarEventColor
 }
 
-type CalendarContextProps = {
+type CalendarContextProps<T extends BaseCalendarEvent> = {
     date: Date
     setDate: (date: Date) => void
     view: CalendarViewType
     setView: (view: CalendarViewType) => void
-    events: CalendarEvent[]
-    eventsByDay: Map<string, CalendarEvent[]>
-    setEvents: (events: CalendarEvent[]) => void
+    events: T[]
+    eventsByDay: Map<string, T[]>
+    setEvents: (events: T[]) => void
     locale?: Locale // date-fns locale
     weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6
     days: Date[]
     formattedDate: string
     weekDays: Date[]
+    timezone: string
 }
 
-const CalendarContext = React.createContext<CalendarContextProps | null>(null)
+const CalendarContext = React.createContext<CalendarContextProps<any> | null>(null)
 
-function useCalendar() {
-    const context = React.useContext(CalendarContext)
+function useCalendar<T extends BaseCalendarEvent>() {
+    const context = React.useContext(CalendarContext) as CalendarContextProps<T>
     if (!context) {
         throw new Error("useCalendar must be used within a CalendarProvider")
     }
@@ -66,26 +66,28 @@ function useCalendar() {
 
 // --- Provider ---
 
-interface CalendarProviderProps extends React.ComponentProps<"div"> {
+interface CalendarProviderProps<T extends BaseCalendarEvent> extends React.ComponentProps<"div"> {
     defaultDate?: Date
     defaultView?: CalendarViewType
-    events?: CalendarEvent[]
-    eventsByDay?: Map<string, CalendarEvent[]>
+    events?: T[]
+    eventsByDay?: Map<string, T[]>
     locale?: Locale
     weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6 // 0 Sunday, 1 Monday
+    timezone?: string
     children: React.ReactNode
 }
 
-function CalendarProvider({
+function CalendarProvider<T extends BaseCalendarEvent>({
     defaultDate = new Date(),
     defaultView = "month",
     events: initialEvents = [],
     locale,
     weekStartsOn = 0,
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
     className,
     children,
     ...props
-}: CalendarProviderProps) {
+}: CalendarProviderProps<T>) {
     const [date, setDate] = React.useState(defaultDate)
     const [events, setEvents] = React.useState(initialEvents)
     const [view, setView] = React.useState<CalendarViewType>(defaultView)
@@ -99,25 +101,34 @@ function CalendarProvider({
     }, [date, weekStartsOn])
 
     const eventsByDay = React.useMemo(() => {
-        const map = new Map<string, CalendarEvent[]>()
+        const map = new Map<string, T[]>()
 
         for (const event of events) {
-            const key = event.start.toDateString()
+            // 1. Normalización:
+            // Creamos una instancia de TZDate. Esto crea un objeto fecha que "vive" en Bogota (o la zona que sea).
+            // Si event.start es string "2026-02-04T05:00Z", TZDate lo convierte a la hora local de la zona target.
+            const zonedDate = new TZDate(new Date(event.start), timezone)
+
+            // 2. Generar Clave:
+            // Al usar format() sobre un TZDate, date-fns v4 detecta automáticamente la zona.
+            // Ya no necesitamos trucos raros.
+            const key = format(zonedDate, "yyyy-MM-dd")
+
             if (!map.has(key)) map.set(key, [])
             map.get(key)!.push(event)
         }
 
         return map
-    }, [events])
+    }, [events, timezone])
 
     const formattedDate = React.useMemo(() => {
         switch (view) {
             case "month":
-                return format(date, "MMMM yyyy", { locale })
+                return format(new TZDate(date, timezone), "MMMM yyyy", { locale })
             case "week":
-                return `Semana de ${format(date, "MMM d", { locale })}`
+                return `Semana de ${format(new TZDate(date, timezone), "MMM d", { locale })}`
             case "day":
-                return format(date, "EEEE, d MMMM yyyy", { locale })
+                return format(new TZDate(date, timezone), "EEEE, d MMMM yyyy", { locale })
             default:
                 return ""
         }
@@ -142,7 +153,8 @@ function CalendarProvider({
             weekStartsOn,
             days,
             formattedDate,
-            weekDays
+            weekDays,
+            timezone
         }),
         [
             date,
@@ -153,7 +165,8 @@ function CalendarProvider({
             weekStartsOn,
             days,
             formattedDate,
-            weekDays
+            weekDays,
+            timezone
         ]
     )
 
@@ -271,20 +284,20 @@ function CalendarTodayTrigger({ asChild, className, ...props }: CalendarTriggerP
 
 function CalendarBody({ className, ...props }: React.ComponentProps<"div">) {
     return (
-        <div 
-            data-slot="calendar-body" 
-            className={cn("flex-1 w-full overflow-hidden flex flex-col", className)} 
-            {...props} 
+        <div
+            data-slot="calendar-body"
+            className={cn("flex-1 w-full overflow-hidden flex flex-col", className)}
+            {...props}
         />
     )
 }
 
 function CalendarMonthView({ className, ...props }: React.ComponentProps<"div">) {
     return (
-        <div 
-            data-slot="calendar-month-view" 
-            className={cn("flex flex-col h-full", className)} 
-            {...props} 
+        <div
+            data-slot="calendar-month-view"
+            className={cn("flex flex-col h-full", className)}
+            {...props}
         />
     )
 }
@@ -375,8 +388,9 @@ function CalendarDayDate({ date, className, children, ...props }: React.Componen
     return (
         <span
             data-slot="calendar-day-date"
+            data-today={isTodayDate}
             className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium",
+                "flex h-6 w-6 md:h-7 md:w-7 items-center justify-center rounded-full text-xs font-medium shrink-0",
                 isTodayDate ? "bg-primary text-primary-foreground" : "text-muted-foreground group-hover:text-foreground",
                 className
             )}
@@ -407,27 +421,57 @@ const eventVariants = cva(
     }
 )
 
-function CalendarEventCard({ event, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { event: CalendarEvent }) {
+function CalendarEvent({
+    color,
+    className,
+    ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { color?: BaseCalendarEvent["color"] }) {
     return (
         <button
             data-slot="calendar-event"
-            className={cn(eventVariants({ color: event.color }), className)}
+            className={cn(eventVariants({ color }), className)}
             {...props}
-            onClick={(e) => {
-                e.stopPropagation()
-                props.onClick?.(e)
-            }}
-        >
-            <div className="flex items-center gap-1.5">
-                <div className="w-1 h-1 rounded-full bg-current shrink-0" />
-                <span className="truncate font-semibold">{event.title}</span>
-                {event.start && (
-                    <span className="opacity-70 text-[10px] ml-auto hidden sm:inline-block">
-                        {format(event.start, "HH:mm")}
-                    </span>
-                )}
-            </div>
-        </button>
+        />
+    )
+}
+
+function CalendarEventContent({ className, ...props }: React.ComponentProps<"div">) {
+    return (
+        <div
+            data-slot="calendar-event-content"
+            className={cn("flex items-center gap-1.5", className)}
+            {...props}
+        />
+    )
+}
+
+function CalendarEventDot({ className, ...props }: React.ComponentProps<"div">) {
+    return (
+        <div
+            data-slot="calendar-event-dot"
+            className={cn("w-1.5 h-1.5 rounded-full aspect-square bg-current shrink-0", className)}
+            {...props}
+        />
+    )
+}
+
+function CalendarEventTitle({ className, ...props }: React.ComponentProps<"span">) {
+    return (
+        <span
+            data-slot="calendar-event-title"
+            className={cn("truncate font-semibold", className)}
+            {...props}
+        />
+    )
+}
+
+function CalendarEventTime({ className, ...props }: React.ComponentProps<"span">) {
+    return (
+        <span
+            data-slot="calendar-event-time"
+            className={cn("ml-auto opacity-70 text-[10px] hidden sm:inline-block", className)}
+            {...props}
+        />
     )
 }
 
@@ -448,5 +492,9 @@ export {
     CalendarDay,
     CalendarDayHeader,
     CalendarDayDate,
-    CalendarEventCard,
+    CalendarEvent,
+    CalendarEventContent,
+    CalendarEventDot,
+    CalendarEventTitle,
+    CalendarEventTime,
 }

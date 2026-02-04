@@ -18,6 +18,7 @@ export default function CalendarLayout({ children }: { children: React.ReactNode
             <CalendarProvider
                 weekStartsOn={1} // Lunes
                 locale={es}
+                timezone="America/Bogota"
                 className="h-screen bg-background border rounded-md overflow-hidden"
             >
                 {children}
