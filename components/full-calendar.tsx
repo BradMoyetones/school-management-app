@@ -45,7 +45,7 @@ type CalendarContextProps<T extends BaseCalendarEvent> = {
     setView: (view: CalendarViewType) => void
     events: T[]
     eventsByDay: Map<string, T[]>
-    setEvents: (events: T[]) => void
+    setEvents: React.Dispatch<React.SetStateAction<T[]>>
     locale?: Locale // date-fns locale
     weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6
     days: Date[]
@@ -173,7 +173,7 @@ function CalendarProvider<T extends BaseCalendarEvent>({
     return (
         <CalendarContext.Provider value={contextValue}>
             <div
-                className={cn("flex flex-col h-full w-full", className)}
+                className={cn(className)}
                 {...props}
             >
                 {children}
@@ -183,6 +183,16 @@ function CalendarProvider<T extends BaseCalendarEvent>({
 }
 
 // --- Componentes de Estructura ---
+
+function Calendar({ className, ...props }: React.ComponentProps<"div">) {
+    return (
+        <div
+            data-slot="calendar"
+            className={cn("flex flex-col h-full w-full bg-background border rounded-xl overflow-hidden", className)}
+            {...props}
+        />
+    )
+}
 
 function CalendarHeader({ className, ...props }: React.ComponentProps<"header">) {
     return (
@@ -478,6 +488,7 @@ function CalendarEventTime({ className, ...props }: React.ComponentProps<"span">
 export {
     CalendarProvider,
     useCalendar,
+    Calendar,
     CalendarHeader,
     CalendarTitle,
     CalendarDescription,

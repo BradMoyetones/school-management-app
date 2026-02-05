@@ -19,7 +19,8 @@ import {
     CalendarEventDot,
     CalendarEventTitle,
     CalendarEventTime,
-    CalendarEventColor
+    CalendarEventColor,
+    Calendar
 } from '@/components/full-calendar'
 import { Switch } from '@/components/ui/switch';
 import { format, isSameMonth, isToday } from 'date-fns';
@@ -94,7 +95,7 @@ export default function Page() {
     }, [])
 
     return (
-        <>
+        <Calendar>
             <CalendarHeader className="px-6 py-4">
                 <div className="flex items-center gap-2">
                     <CalendarTitle className="text-2xl">{formattedDate}</CalendarTitle>
@@ -140,7 +141,7 @@ export default function Page() {
                     setOpenSheet(false)
                 }}
             />
-        </>
+        </Calendar>
     )
 }
 
@@ -157,6 +158,7 @@ const CalendarDayRender = memo(({ day, onClick }: { day: Date, onClick: (event: 
             isCurrentMonth={isCurrentMonth}
             isToday={isTodayDate}
             onClick={() => console.log("Click en el día:", day)}
+            className='min-h-[160px]'
         >
             <CalendarDayHeader>
                 <CalendarDayDate date={day} />
